@@ -139,9 +139,37 @@ CLASS ZCL_ZOV_DPC_EXT IMPLEMENTATION.
   endmethod.
 
 
-  method OVCABSET_GET_ENTITYSET.
+  METHOD ovcabset_get_entityset.
 
-  endmethod.
+    DATA: lt_cab       TYPE STANDARD TABLE OF zovcab,
+          ls_cab       TYPE zovcab,
+          ls_entityset LIKE LINE OF et_entityset. "Vamos copiar os dados que vem do BD pro formato da EntitySet"
+
+    "Pegando todos os Cabeçalhos do Banco de Dados"
+    SELECT *
+      FROM zovcab
+      INTO TABLE lt_cab.
+
+    "Passando por todos os Cabeçalhos que vieram do BD, linha a linha"
+    LOOP AT lt_cab INTO ls_cab.
+      CLEAR ls_entityset.
+
+      "Movendo os dados da estrutura da Tabela ZOVCAB para a estrutura da EntitySet"
+      MOVE-CORRESPONDING ls_cab TO ls_entityset.
+
+      "Movendo manualmente os campos que o MOVE não conseguiu copiar"
+      ls_entityset-criadopor = ls_cab-criacao_usuario.
+
+      "Pegando data e hora e colocando em um único campo na EntitySet"
+      CONVERT DATE ls_cab-criacao_data
+              TIME ls_cab-criacao_hora
+         INTO TIME STAMP ls_entityset-datacriacao
+         TIME ZONE sy-zonlo.
+
+      "Passando os dados da estrutura da EntitySet para a própria EntitySet"
+      APPEND ls_entityset TO et_entityset.
+    ENDLOOP.
+  ENDMETHOD.
 
 
   method OVCABSET_UPDATE_ENTITY.
@@ -205,9 +233,32 @@ CLASS ZCL_ZOV_DPC_EXT IMPLEMENTATION.
   endmethod.
 
 
-  method OVITEMSET_GET_ENTITYSET.
+  METHOD ovitemset_get_entityset.
+    DATA: ld_ordemid       TYPE int4,
+          lt_ordemid_range TYPE RANGE OF int4,
+          ls_ordemid_range LIKE LINE OF lt_ordemid_range,
+          ls_key_tab       LIKE LINE OF it_key_tab.
 
-  endmethod.
+    "Pegando a chave com ID da Ordem"
+    READ TABLE it_key_tab INTO ls_key_tab WITH KEY name = 'OrdemID'.
+
+    "Se foi passado uma chave, prepara um range"
+    IF sy-subrc IS INITIAL.
+      ld_ordemid = ls_key_tab-value.
+
+      CLEAR ls_ordemid_range.
+      ls_ordemid_range-sign = 'I'.
+      ls_ordemid_range-option = 'EQ'.
+      ls_ordemid_range-low = ld_ordemid.
+      APPEND ls_ordemid_range TO lt_ordemid_range.
+    ENDIF.
+
+    "Se tiver um range faz um select com ele, caso contrário, chama tudo da tabela"
+    SELECT *
+      FROM zovitem
+      INTO CORRESPONDING FIELDS OF TABLE et_entityset
+      WHERE ordemid IN lt_ordemid_range.
+  ENDMETHOD.
 
 
   method OVITEMSET_UPDATE_ENTITY.
