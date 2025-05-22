@@ -134,9 +134,66 @@ CLASS ZCL_ZOV_DPC_EXT IMPLEMENTATION.
   endmethod.
 
 
-  method OVCABSET_GET_ENTITY.
+METHOD ovcabset_get_entity.
 
-  endmethod.
+  DATA: ld_ordemid TYPE zovcab-ordemid, "Váriavel que recebe ID da ordem de vendas"
+        ls_key_tab LIKE LINE OF it_key_tab, "Estrutura para extrair a chave da entidade"
+        ls_cab     TYPE zovcab.
+
+  "Objeto para emitir mensagens de erro para quem tiver consumindo o serviço"
+  DATA(lo_msg) = me->/iwbep/if_mgw_conv_srv_runtime~get_message_container( ).
+
+  "Tentando pegar o campo OrdemID"
+  READ TABLE it_key_tab INTO ls_key_tab WITH KEY name = 'OrdemID'.
+
+  "Se o ID da ordem não for passado, dá uma msg de erro"
+  IF sy-subrc IS NOT INITIAL.
+
+    lo_msg->add_message_text_only(
+      EXPORTING
+        iv_msg_type = 'E'
+        iv_msg_text = 'ID da ordem não informado...'
+    ).
+
+    RAISE EXCEPTION TYPE /iwbep/cx_mgw_busi_exception
+      EXPORTING
+        message_container = lo_msg.
+  ENDIF.
+
+  "Passando o ID da entidade para a váriavel que será usada no select"
+  ld_ordemid = ls_key_tab-value.
+
+  "Pegando os dados do cabeçalho baseado no ID da ordem que foi fornecido"
+  SELECT SINGLE *
+    FROM zovcab
+    INTO ls_cab
+   WHERE ordemid = ld_ordemid.
+
+  "Se o select foi bem sucedido, move os dados para a entidade"
+  IF sy-subrc IS INITIAL.
+
+    MOVE-CORRESPONDING ls_cab TO er_entity.
+
+    er_entity-criadopor = ls_cab-criacao_usuario.
+
+    CONVERT DATE ls_cab-criacao_data
+            TIME ls_cab-criacao_hora
+       INTO TIME STAMP er_entity-datacriacao
+            TIME ZONE sy-zonlo.
+
+  ELSE.
+    lo_msg->add_message_text_only(
+      EXPORTING
+        iv_msg_type = 'E'
+        iv_msg_text = 'ID da Ordem de Vendas não encontrado...'
+    ).
+
+    RAISE EXCEPTION TYPE /iwbep/cx_mgw_busi_exception
+      EXPORTING
+        message_container = lo_msg.
+  ENDIF.
+
+ENDMETHOD.
 
 
   METHOD ovcabset_get_entityset.
@@ -228,9 +285,77 @@ CLASS ZCL_ZOV_DPC_EXT IMPLEMENTATION.
   endmethod.
 
 
-  method OVITEMSET_GET_ENTITY.
+METHOD ovitemset_get_entity.
 
-  endmethod.
+  DATA: ls_key_tab LIKE LINE OF it_key_tab, "Estrutura para extrair os campos chaves da entidade"
+        ls_item    TYPE zovitem,
+        ld_error   TYPE flag. "Flag para controlar erro no processo do programa"
+
+  "Objeto para emitir mensagens de erro para quem tiver consumindo o serviço"
+  DATA(lo_msg) = me->/iwbep/if_mgw_conv_srv_runtime~get_message_container( ).
+
+  "Tentando ler o campo OrdemID da tabela de chaves"
+  READ TABLE it_key_tab INTO ls_key_tab WITH KEY name = 'OrdemID'.
+
+  "Se não char nada, marca o Flag com 'X' e segue o programa"
+  IF sy-subrc IS NOT INITIAL.
+    ld_error = 'X'.
+    lo_msg->add_message_text_only(
+      EXPORTING
+        iv_msg_type = 'E'
+        iv_msg_text = 'ID da ordem não informado...'
+    ).
+  ENDIF.
+
+  "Passa o ID da ordem para a estrutra"
+  ls_item-ordemid = ls_key_tab-value.
+
+  "Tendo ler o campo ItemID da tabela de chaves"
+  READ TABLE it_key_tab INTO ls_key_tab WITH KEY name = 'ItemID'.
+
+  "Se não char nada, marca o Flag com 'X' e segue o programa"
+  IF sy-subrc IS NOT INITIAL.
+    ld_error = 'X'.
+    lo_msg->add_message_text_only(
+      EXPORTING
+        iv_msg_type = 'E'
+        iv_msg_text = 'ID do item não informado...'
+    ).
+  ENDIF.
+
+  "Passa o ID do item para a estrutra"
+  ls_item-itemid = ls_key_tab-value.
+
+  "Se o Flag tiver preenchido, ouve erro de processo, lança uma excessão"
+  IF ld_error IS NOT INITIAL.
+    RAISE EXCEPTION TYPE /iwbep/cx_mgw_busi_exception
+      EXPORTING
+        message_container = lo_msg.
+  ENDIF.
+
+  "Select na tabela com os campos chaves OrdemID e ItemID"
+  SELECT SINGLE *
+    FROM zovitem
+    INTO ls_item
+   WHERE ordemid = ls_item-ordemid
+     AND itemid  = ls_item-itemid.
+
+  "Se o select foi bem sucedido, move os dados da estrutura para a entidade"
+  IF sy-subrc IS INITIAL.
+    MOVE-CORRESPONDING ls_item TO er_entity.
+  ELSE.
+    lo_msg->add_message_text_only(
+      EXPORTING
+        iv_msg_type = 'E'
+        iv_msg_text = 'Item não encontrado...'
+    ).
+
+    RAISE EXCEPTION TYPE /iwbep/cx_mgw_busi_exception
+      EXPORTING
+        message_container = lo_msg.
+  ENDIF.
+
+ENDMETHOD.
 
 
   METHOD ovitemset_get_entityset.
