@@ -222,6 +222,11 @@ ENDMETHOD.
 
     CONCATENATE LINES OF lt_orderby INTO ld_orderby SEPARATED BY ''."ld_orderby será usado no select abaixo como ordenação"
 
+    "Se na Requisição não for passado nenhuma ordenação, por padrão fica ASCENDING"
+    IF ld_orderby = ''.
+      ld_orderby = 'OrdemID ASCENDING'. "ld_orderby não pode ser nulo"
+    ENDIF.
+
     SELECT *
       FROM zovcab
       WHERE (iv_filter_string) "Aplicando o filtro"
@@ -253,9 +258,44 @@ ENDMETHOD.
   ENDMETHOD.
 
 
-  method OVCABSET_UPDATE_ENTITY.
+METHOD ovcabset_update_entity.
 
-  endmethod.
+  "Objeto para emitir mensagens de erro para quem tiver consumindo o serviço"
+  DATA(lo_msg) = me->/iwbep/if_mgw_conv_srv_runtime~get_message_container( ).
+
+
+  "Pegando os dados da requisição e copiando pra estrutura er_entity"
+  io_data_provider->read_entry_data(
+    IMPORTING
+      es_data = er_entity
+  ).
+
+  "Puxando o campo chave OrdemID"
+  er_entity-ordemid = it_key_tab[ name = 'OrdemID' ]-value.
+
+  "Atualizando os campos necessários com o UPDATE"
+  UPDATE zovcab
+     SET clienteid  = er_entity-clienteid
+         totalitens = er_entity-totalitens
+         totalfrete = er_entity-totalfrete
+         totalordem = er_entity-totalordem
+         status     = er_entity-status
+   WHERE ordemid    = er_entity-ordemid.
+
+  "Se o UPDATE der errado, lança a excessão"
+  IF sy-subrc IS NOT INITIAL.
+    lo_msg->add_message_text_only(
+      EXPORTING
+        iv_msg_type = 'E'
+        iv_msg_text = 'Erro ao atualizar ordem...'
+    ).
+
+    RAISE EXCEPTION TYPE /iwbep/cx_mgw_busi_exception
+      EXPORTING
+        message_container = lo_msg.
+  ENDIF.
+
+ENDMETHOD.
 
 
   METHOD ovitemset_create_entity.
@@ -366,7 +406,12 @@ METHOD ovitemset_get_entity.
 
   "Se o select foi bem sucedido, move os dados da estrutura para a entidade"
   IF sy-subrc IS INITIAL.
+
     MOVE-CORRESPONDING ls_item TO er_entity.
+
+    er_entity-precounitario = ls_item-precouni.
+    er_entity-precototal    = ls_item-precotot.
+
   ELSE.
     lo_msg->add_message_text_only(
       EXPORTING
@@ -410,7 +455,39 @@ ENDMETHOD.
   ENDMETHOD.
 
 
-  method OVITEMSET_UPDATE_ENTITY.
+METHOD ovitemset_update_entity.
+  "Objeto para emitir mensagens de erro para quem tiver consumindo o serviço"
+  DATA(lo_msg) = me->/iwbep/if_mgw_conv_srv_runtime~get_message_container( ).
 
-  endmethod.
+  "Pegando os dados da requisição e copiando pra estrutura er_entity"
+  io_data_provider->read_entry_data(
+    IMPORTING
+      es_data = er_entity
+  ).
+
+  er_entity-ordemid    = it_key_tab[ name = 'OrdemID' ]-value."Puxando o campo chave OrdemID"
+  er_entity-itemid     = it_key_tab[ name = 'ItemID'  ]-value."Puxando o campo chave ItemID"
+  er_entity-precototal = er_entity-quantidade * er_entity-precounitario. "Pegando o preço total da ordem"
+
+  UPDATE zovitem
+     SET material   = er_entity-material
+         descricao  = er_entity-descricao
+         quantidade = er_entity-quantidade
+         precouni   = er_entity-precounitario
+         precotot   = er_entity-precototal
+   WHERE ordemid    = er_entity-ordemid
+     AND itemid     = er_entity-itemid.
+
+  IF sy-subrc IS NOT INITIAL.
+    lo_msg->add_message_text_only(
+      EXPORTING
+        iv_msg_type = 'E'
+        iv_msg_text = 'Erro ao atualizar item...'
+    ).
+
+    RAISE EXCEPTION TYPE /iwbep/cx_mgw_busi_exception
+      EXPORTING
+        message_container = lo_msg.
+  ENDIF.
+ENDMETHOD.
 ENDCLASS.
