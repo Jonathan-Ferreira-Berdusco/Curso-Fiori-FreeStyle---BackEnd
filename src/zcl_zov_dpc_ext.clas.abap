@@ -200,12 +200,36 @@ ENDMETHOD.
 
     DATA: lt_cab       TYPE STANDARD TABLE OF zovcab,
           ls_cab       TYPE zovcab,
-          ls_entityset LIKE LINE OF et_entityset. "Vamos copiar os dados que vem do BD pro formato da EntitySet"
+          ls_entityset LIKE LINE OF et_entityset, "Vamos copiar os dados que vem do BD pro formato da EntitySet"
+          lt_orderby   TYPE STANDARD TABLE OF string, "Tabela onde vamos armazenas cada linha de ordenação"
+          ld_orderby   TYPE string.
 
-    "Pegando todos os Cabeçalhos do Banco de Dados"
+    "Quando é feito um filtro, ele é armazenado na tabela it_order"
+    LOOP AT it_order INTO DATA(ls_order).
+
+      TRANSLATE ls_order-property TO UPPER CASE.
+      TRANSLATE ls_order-order    TO UPPER CASE.
+
+      IF ls_order-order = 'DESC'.
+        ls_order-order = 'DESCENDING'.
+      ELSE.
+        ls_order-order = 'ASCENDING'.
+      ENDIF.
+
+      APPEND |{ ls_order-property } { ls_order-order }| TO lt_orderby.
+
+    ENDLOOP.
+
+    CONCATENATE LINES OF lt_orderby INTO ld_orderby SEPARATED BY ''."ld_orderby será usado no select abaixo como ordenação"
+
     SELECT *
       FROM zovcab
-      INTO TABLE lt_cab.
+      WHERE (iv_filter_string) "Aplicando o filtro"
+      ORDER BY (ld_orderby) "Aplicando ordenação"
+      INTO TABLE @lt_cab
+      UP TO @is_paging-top ROWS "Aplicando paginação"
+      OFFSET @is_paging-skip. "Aplicando paginação"
+
 
     "Passando por todos os Cabeçalhos que vieram do BD, linha a linha"
     LOOP AT lt_cab INTO ls_cab.
